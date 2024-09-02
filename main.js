@@ -3,6 +3,7 @@ config({
     path:"C:\\Users\\Ishwar Dalvi\\Desktop\\major project server\\config.env",
 });
 
+import {validate} from 'deep-email-validator';
 import express, { response } from 'express';
 import { Server } from "socket.io";
 import mongoose from "mongoose";
@@ -113,8 +114,8 @@ app.post("/api/user",checkSchema(userValidationSchema),async(req,res,next)=>{
     if(does_user_exist){
         next(new Error("User with same email already exists"));
     }else{
-    emailExistence.check(email,async(err,response)=>{
-        if(response===true){
+      const {valid} = await validate(email);
+        if(valid){
             const encryptedPassword = encryptPassword(password);
             const model_result = await User.create({
                 name : name,
@@ -133,7 +134,7 @@ app.post("/api/user",checkSchema(userValidationSchema),async(req,res,next)=>{
             next(new Error("Email you have entered does not exist"));
         }
         
-    })}
+    }
 })
 
 app.use((err,req,res,next)=>{
