@@ -11,7 +11,6 @@ import { checkSchema, matchedData, validationResult } from "express-validator";
 import { userValidationSchema } from "./validation/UserValidationSchema.js";
 import { compareNormalPassWithHashedPass, encryptPassword } from "./utils/passwordEncrption.js";
 import { User } from "./models/user.js";
-import emailExistence from 'email-existence';
 import cors from 'cors';
 import session from "express-session";
 import MongoStore from "connect-mongo";
