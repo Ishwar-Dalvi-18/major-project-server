@@ -130,7 +130,7 @@ app.post("/api/user",checkSchema(userValidationSchema),async(req,res,next)=>{
                 }
             })
         }else{
-            next(new Error("Email you have entered does not exist"));
+            next(new Error("Cannot verify your email . Please enter valid email"));
         }
         
     }
