@@ -15,34 +15,39 @@ import cors from 'cors';
 import session from "express-session";
 import MongoStore from "connect-mongo";
 import passport from "passport";
-import "./strategies/googleStrategy.js"
 import "./strategies/localStrategy.js"
-
+import "./strategies/googleStrategy.js"
+import { profileRouter } from "./routers/profileRouter.js";
+import { isUserAuthenticated } from "./middlewares/isUserAuthenticated.js";
+import { NewUser } from "./models/newuser.models.js";
+//password : cPfzFWUMX3nSsaeK
 const port = process.env.PORT || 8000;
 const app = express();
-app.use(express.json());
+
 app.use(cors({
-    origin: ["http://192.168.0.224:5173", "http://localhost:5173", `httP://${process.env.IP2}:5173`],
+    origin: ["http://192.168.0.224:5173", "http://localhost:5173", `httP://${process.env.IP2}:5173`, "http://192.168.153.251:5173"],
     credentials: true,
     methods: ["GET", "POST", "DELETE", "PUSH"],
 }))
-
-mongoose.connect("mongodb+srv://dalviishwar1817_2:CylH7tmznpY1LSqs@cluster0.5029v.mongodb.net/major-project?retryWrites=true&w=majority&appName=Cluster0").then(db => {
+mongoose.connect("mongodb+srv://ishwar:cPfzFWUMX3nSsaeK@cluster0.fxllgkn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0").then(db => {
     console.log(`Connection to database successfull`);
 })
+// mongoose.connect("mongodb+srv://dalviishwar1817_2:CylH7tmznpY1LSqs@cluster0.5029v.mongodb.net/major-project?retryWrites=true&w=majority&appName=Cluster0").then(db => {
+//     console.log(`Connection to database successfull`);
+// })
+app.use(express.json());
 
 app.use(session({
     secret: "ISHWAR",
     saveUninitialized: false,
     resave: false,
-    store: MongoStore.create({
-        client: mongoose.connection.getClient()
-    })
+    cookie:{
+        maxAge: 1000 * 60 * 60 * 24
+    }
 }))
 
 app.use(passport.initialize());
 app.use(passport.session());
-
 
 
 const httpServer = app.listen(port, () => {
@@ -58,7 +63,7 @@ const io = new Server(httpServer, {
 io.on("connection", socket => {
     console.log(`One client connected : ${socket.id}`);
 })
-
+app.use("/profile", isUserAuthenticated, profileRouter)
 app.get("/api/auth/google", passport.authenticate('google', { scope: ['profile', 'email'] }))
 app.get("/api/auth/google/callback", passport.authenticate('google', {
     successRedirect: "http://localhost:5173/profile",
@@ -67,49 +72,36 @@ app.get("/api/auth/google/callback", passport.authenticate('google', {
 app.post("/api/user/login", (req, res, next) => {
     const { lang } = req.body
     console.log(language(lang));
-    req.language = lang
     next()
-}, async (req, res, next) => {
-    passport.authenticate('local', (err, user, info) => {
-        console.log(info.message)
-        if (err) {
-            return next(err)
-        }
-        if (!user) {
-
-            return next(new Error(info.message));
-        }
-        if (user) {
-            let message
-            if (language() === "en") {
-                message = "You logged in successfully"
-            } else if (language() === "mr") {
-                message = "तुम्ही यशस्वीपणे लॉगिन केले आहे"
-            } else if (language() === "hi") {
-                message = "आपने सफलतापूर्वक लॉगिन किया"
+}, passport.authenticate("local"),(req,res)=>{
+    if(req.user){
+        res.json({
+            response:{
+                type : true,
+                msg : "You logged in successfully",
+                user : req.user
             }
-            return res.json({
-                response: {
-                    type: true,
-                    msg: message,
-                    user
-                }
-            })
-        }
-    })(req, res, next);
-
+        }) 
+    }
 })
-app.get("/api/user", (req, res) => {
+
+
+
+app.get("/api/get/user", (req, res) => {
+    console.log(req.session)
     console.log(req.user)
     if (req.user) {
         res.json({
             response: {
+                type: true,
                 user: req.user
             }
         })
     } else {
         res.json({
-            response: {}
+            response: {
+                type: false
+            }
         })
     }
 })
@@ -134,7 +126,8 @@ app.post("/api/user", checkSchema(userValidationSchema), (req, res, next) => {
         }
         next(new Error(message));
     }
-    const { email, password, name } = data;
+    console.log(data)
+    const { email, password, name, contact, country, state, address } = data;
     console.log(`email : ${email} password : ${password}`);
     const does_user_exist = await User.findOne({ email: email });
     if (does_user_exist) {
@@ -151,10 +144,14 @@ app.post("/api/user", checkSchema(userValidationSchema), (req, res, next) => {
         const { valid } = await validate(email);
         if (valid) {
             const encryptedPassword = encryptPassword(password);
-            const model_result = await User.create({
+            const model_result = await NewUser.create({
                 name: name,
                 email: email,
                 password: encryptedPassword,
+                contact: contact,
+                address: address,
+                country: country,
+                state: state
             })
             await model_result.save();
             let message
@@ -196,3 +193,29 @@ app.use((err, req, res, next) => {
 })
 
 
+// , (err, user, info) => {
+//     if (err) {
+//         return next(err)
+//     }
+//     if (!user) {
+//         return next(new Error(info.message));
+//     }
+//     if (user) {
+//         let message
+//     if (language() === "en") {
+//         message = "You logged in successfully"
+//     } else if (language() === "mr") {
+//         message = "तुम्ही यशस्वीपणे लॉगिन केले आहे"
+//     } else if (language() === "hi") {
+//         message = "आपने सफलतापूर्वक लॉगिन किया"
+//     }
+//     req.session.user = user
+//     return res.json({
+//         response: {
+//             type: true,
+//             msg: message,
+//             user
+//         }
+//     })
+//     }
+// })(req, res, next);

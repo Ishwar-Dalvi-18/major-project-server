@@ -1,13 +1,6 @@
 import passport from "passport";
 import {OAuth2Strategy} from 'passport-google-oauth'
 
-passport.serializeUser((user,done)=>{
-    done(null,user)
-})
-
-passport.deserializeUser((user,done)=>{
-    done(null,user)
-})
 passport.use(new OAuth2Strategy({
     clientID : "481325303523-lucch7up39iodnccrbugb1aedlsfsqcl.apps.googleusercontent.com",
     clientSecret : "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",
