@@ -1,4 +1,10 @@
 export const userValidationSchema = {
+    image:{
+        optional:true,
+        isString:{
+            errorMessage:"image must be of base64 format"
+        }
+    },
     name: {
         notEmpty: {
             errorMessage: "Username should not be empty"
@@ -58,5 +64,13 @@ export const userValidationSchema = {
             errorMessage:"Address is mandatory",
         },
         isString:true
+    },
+    role:{
+        notEmpty:{
+            errorMessage:"Role of user is mandatory",
+        },
+        isString : {
+            errorMessage:"Role of user must be in string format"
+        }
     }
 }

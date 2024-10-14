@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema({
+    image:{
+        type:String
+    },
     name:{
         type: mongoose.Schema.Types.String,
         require : true,
@@ -28,6 +31,10 @@ const userSchema = new mongoose.Schema({
     },
     address : {
         type : mongoose.Schema.Types.String,
+        required:true
+    },
+    role:{
+        type: mongoose.Schema.Types.String,
         required:true
     }
 })

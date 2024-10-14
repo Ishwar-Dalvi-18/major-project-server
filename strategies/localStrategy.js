@@ -5,17 +5,17 @@ import { compareNormalPassWithHashedPass } from "../utils/passwordEncrption.js";
 import { language } from "../globals.js";
 import { NewUser } from "../models/newuser.models.js";
 
+passport.deserializeUser((user,done)=>{
+    console.log("DeSerialize")
+    done(null,user)
+})
+
 passport.serializeUser((user,done)=>{
     console.log("Serialize")
     console.log(user)
     done(null,user)
 })
 
-passport.deserializeUser((user,done)=>{
-    console.log("Deserialize")
-    console.log(user)
-    done(null,user)
-})
 passport.use(new Strategy({
     usernameField : "email"
 },async(username , password , done)=>{
