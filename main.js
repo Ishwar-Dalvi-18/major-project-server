@@ -81,6 +81,32 @@ app.get("/api/auth/google/callback", passport.authenticate('google', {
     successRedirect: "http://localhost:5173/profile",
     failureRedirect: "http://localhost:5173/login"
 }))
+
+app.get("/api/products/:seq",async (req,res)=>{
+    const {params:{seq}} = req;
+    const re = new RegExp(seq,"i");
+    const result = await Product.find({name:{$regex:re}},'name');
+    const new_result = result.map((value)=>{
+        return value.name.toLowerCase()
+        
+    });
+    const final_result = new Set(new_result);
+    const new_arr = Array.from(final_result);
+    const final_arr = new_arr.map((value,index)=>{
+        return {
+            _id : index,
+            name : value
+        }
+    })
+    
+    res.json({
+        response:{
+            type:true,
+            products:final_arr
+        }
+    })
+})
+
 app.post("/api/user/login", async (req, res,next) => {
     const{body:{email,role,lang}} = req;
     if(email,role){
@@ -105,11 +131,8 @@ app.post("/api/user/login", async (req, res,next) => {
     
 }, (req, res, next) => {
     const { lang } = req.body
-    console.log(language(lang));
     next()
 }, passport.authenticate("local"), (req, res) => {
-    console.log(req.session)
-    console.log(req.sessionID)
     if (req.user) {
         res.json({
             response: {
@@ -127,10 +150,8 @@ app.post("/api/product", checkSchema(productValidation), async (req, res, next) 
         const result = validationResult(req)
         const data = matchedData(req);
         if (result.errors.length > 0) {
-            console.log(result.errors)
             return next(new Error("Validation error"));
         }
-        console.log(data)
         const product = await Product.create({
             image: data.product.image,
             name: data.product.name,
@@ -155,7 +176,6 @@ app.post("/api/product", checkSchema(productValidation), async (req, res, next) 
         })
 
     } catch (err) {
-        console.log(err)
         next(err)
     }
 })
@@ -174,6 +194,25 @@ app.get("/api/product/:id", async (req, res, next) => {
         next(err)
     }
 })
+
+
+app.get("/api/products/byname/:name", async (req, res, next) => {
+    const name = req.params.name;
+    const re = new RegExp(name,"i")
+    try {
+        const products = await Product.find({ name: re });
+        res.json({
+            response: {
+                type: true,
+                products: products
+            }
+        })
+    } catch (err) {
+        next(err)
+    }
+})
+
+
 
 app.patch("/api/product", checkSchema(productValidation), async (req, res, next) => {
     if (req.user) {
@@ -206,6 +245,20 @@ app.patch("/api/product", checkSchema(productValidation), async (req, res, next)
         })
     } else {
         next(new Error("You are not authenticated"))
+    }
+})
+
+app.get("/api/user/products",async (req,res,next)=>{
+    try{
+        const result = await Product.find({}).limit(10);
+        res.json({
+            response:{
+                type:true,
+                products:result
+            }
+        })
+    }catch(err){
+        next(err)
     }
 })
 
@@ -260,7 +313,6 @@ app.patch("/api/user", checkSchema(userValidationUpdate), async (req, res, next)
             return next(new Error("Validation error"));
         }
         const data = matchedData(req);
-        console.log(data);
         const result = await NewUser.findOneAndUpdate({ _id: data._id },
             {
                 image: data.image,
@@ -292,8 +344,6 @@ app.post("/api/user", checkSchema(userValidationSchema), (req, res, next) => {
 }, async (req, res, next) => {
     const result = validationResult(req);
     const data = matchedData(req);
-    console.log(data)
-    console.log(result);
     if (result.errors.length > 0) {
         let message
         if (language() === "en") {
@@ -305,9 +355,7 @@ app.post("/api/user", checkSchema(userValidationSchema), (req, res, next) => {
         }
         return next(new Error(message));
     }
-    console.log(data)
     const { email, password, name, contact, country, state, address,role} = data;
-    console.log(`email : ${email} password : ${password}`);
     const does_user_exist = await User.findOne({ email: email });
     if (does_user_exist) {
         let message
@@ -322,7 +370,6 @@ app.post("/api/user", checkSchema(userValidationSchema), (req, res, next) => {
     } else {
         // const { valid } = await validate(email);
         const valid = extendedEmailValidation(email);
-        console.log(valid)
         if (valid) {
             const encryptedPassword = encryptPassword(password);
             const model_result = await NewUser.create({
