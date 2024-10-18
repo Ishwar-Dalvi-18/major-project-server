@@ -82,58 +82,128 @@ app.get("/api/auth/google/callback", passport.authenticate('google', {
     failureRedirect: "http://localhost:5173/login"
 }))
 
-app.get("/api/products/:seq",async (req,res)=>{
-    const {params:{seq}} = req;
-    const re = new RegExp(seq,"i");
-    const result = await Product.find({name:{$regex:re}},'name');
-    const new_result = result.map((value)=>{
+app.get("/api/products/:seq", async (req, res) => {
+    const { params: { seq } } = req;
+    const re = new RegExp(seq, "i");
+    const result = await Product.find({ name: { $regex: re } }, 'name');
+    const new_result = result.map((value) => {
         return value.name.toLowerCase()
-        
+
     });
     const final_result = new Set(new_result);
     const new_arr = Array.from(final_result);
-    const final_arr = new_arr.map((value,index)=>{
+    const final_arr = new_arr.map((value, index) => {
         return {
-            _id : index,
-            name : value
+            _id: index,
+            name: value
         }
     })
-    
+
     res.json({
-        response:{
-            type:true,
-            products:final_arr
+        response: {
+            type: true,
+            products: final_arr
         }
     })
 })
 
-app.post("/api/user/login", async (req, res,next) => {
-    const{body:{email,role,lang}} = req;
-    if(email,role){
-        const result = await NewUser.findOne({email:email,role:role});
-        if(result){
+app.get("/api/user/get/:id", async (req, res, next) => {
+    const { params: { id } } = req;
+    try {
+        const user = await NewUser.findOne({ _id: id });
+        res.json({
+            response: {
+                type: true,
+                user: user,
+            }
+        })
+    } catch (err) {
+        next(err)
+    }
+})
+
+app.post("/api/user/cart", async (req, res, next) => {
+    try {
+        const { body: { cartItem } } = req;
+        req.session.cart.push(cartItem);
+        res.json({
+            response: {
+                type: true,
+                msg: "Producted added successfully to cart"
+            }
+        })
+    } catch (err) {
+        next(err)
+    }
+
+})
+
+app.delete("/api/user/cart/:index",(req,res,next)=>{
+    try{
+        const {params:{index}} = req;
+        console.log(index)
+        const arr = req.session.cart.filter((value,i,arr)=>{
+            console.log(i===parseInt(index))
+            if(i===parseInt(index)){
+                return false;
+            }else{
+                return true;
+            }
+        })
+        console.log(arr)
+        req.session.cart = arr
+        res.json({
+            response:{
+                type:true,
+                cart:arr
+            }
+        })
+    }catch(err){
+        next(err)
+    }
+})
+
+app.get("/api/user/cart", (req, res, next) => {
+    try {
+        res.json({
+            response: {
+                type: true,
+                cart: req.session.cart
+            }
+        })
+    }catch(err){
+        next(err)
+    }
+})
+
+app.post("/api/user/login", async (req, res, next) => {
+    const { body: { email, role, lang } } = req;
+    if (email, role) {
+        const result = await NewUser.findOne({ email: email, role: role });
+        if (result) {
             next()
-        }else{
-            if(lang==="en"){
+        } else {
+            if (lang === "en") {
                 return next(new Error("You does not belong to selected role"))
             }
-            else if(lang==="mr"){
+            else if (lang === "mr") {
                 return next(new Error("तुम्ही निवडलेल्या भूमिकेत नाहीत"))
             }
-            else if(lang==="hi"){
+            else if (lang === "hi") {
                 return next(new Error("आप चयनित भूमिका में नहीं हैं।"))
             }
-            
+
         }
-    }else{
+    } else {
         next("Please fill all required credentials");
     }
-    
+
 }, (req, res, next) => {
     const { lang } = req.body
     next()
 }, passport.authenticate("local"), (req, res) => {
     if (req.user) {
+        req.session.cart = []
         res.json({
             response: {
                 type: true,
@@ -198,7 +268,7 @@ app.get("/api/product/:id", async (req, res, next) => {
 
 app.get("/api/products/byname/:name", async (req, res, next) => {
     const name = req.params.name;
-    const re = new RegExp(name,"i")
+    const re = new RegExp(name, "i")
     try {
         const products = await Product.find({ name: re });
         res.json({
@@ -248,16 +318,16 @@ app.patch("/api/product", checkSchema(productValidation), async (req, res, next)
     }
 })
 
-app.get("/api/user/products",async (req,res,next)=>{
-    try{
+app.get("/api/user/products", async (req, res, next) => {
+    try {
         const result = await Product.find({}).limit(10);
         res.json({
-            response:{
-                type:true,
-                products:result
+            response: {
+                type: true,
+                products: result
             }
         })
-    }catch(err){
+    } catch (err) {
         next(err)
     }
 })
@@ -286,7 +356,7 @@ app.get("/api/get/user", async (req, res, next) => {
     console.log(req.user)
     try {
         if (req.user) {
-            const result = await NewUser.findOne({_id: req.user._id })
+            const result = await NewUser.findOne({ _id: req.user._id })
             res.json({
                 response: {
                     type: true,
@@ -355,7 +425,7 @@ app.post("/api/user", checkSchema(userValidationSchema), (req, res, next) => {
         }
         return next(new Error(message));
     }
-    const { email, password, name, contact, country, state, address,role} = data;
+    const { email, password, name, contact, country, state, address, role } = data;
     const does_user_exist = await User.findOne({ email: email });
     if (does_user_exist) {
         let message
@@ -380,7 +450,7 @@ app.post("/api/user", checkSchema(userValidationSchema), (req, res, next) => {
                 address: address,
                 country: country,
                 state: state,
-                role:role
+                role: role
             })
             await model_result.save();
             let message
