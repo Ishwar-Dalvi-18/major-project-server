@@ -25,6 +25,7 @@ import { Product } from "./models/product.models.js";
 import { productValidation } from "./validation/productValidation.js";
 import { extendedEmailValidation } from "./utils/emailValidation.js";
 import { userValidationUpdate } from "./validation/userValidationUpdate.js";
+import { PurchasedProduct } from "./models/purchasedproducts.models.js";
 //password : cPfzFWUMX3nSsaeK
 const port = process.env.PORT || 8000;
 const app = express();
@@ -138,43 +139,112 @@ app.post("/api/user/cart", async (req, res, next) => {
 
 })
 
-app.delete("/api/product/:id",async (req,res,next)=>{
-    try{
-        const {params:{id}} = req;
-        const result = await Product.deleteOne({_id:id});
-        if(result.deletedCount===1){
+app.delete("/api/product/:id", async (req, res, next) => {
+    try {
+        const { params: { id } } = req;
+        const result = await Product.deleteOne({ _id: id });
+        if (result.deletedCount === 1) {
             res.json({
-                response:{
-                    type:true
+                response: {
+                    type: true
                 }
             })
         }
+    } catch (err) {
+        next(err)
+    }
+})
+
+app.delete("/api/user/entirecart",(req,res,next)=>{
+    try{
+        req.session.cart = [];
+        res.json({
+            response:{
+                type:true
+            }
+        })
     }catch(err){
         next(err)
     }
 })
 
-app.delete("/api/user/cart/:index",(req,res,next)=>{
+app.post("/api/user/purchased", async (req, res, next) => {
+    try {
+        const {body:{products}} = req
+        const detailedProductInfo = [];
+        products.forEach(async(value)=>{
+            const result = await Product.findOne({_id:value.id}).populate("owner");
+            detailedProductInfo.push({
+                customer_id: req.user._id,
+                product_id:result._id,
+                image:result.image,
+                name:result.name,
+                quantity: (value.quantity+" "+result.price.unit),
+                amount: (value.quantity*result.price.amount)+" "+result.price.currency,
+                sellername: result.owner.name,
+                sellercontact: result.owner.contact,
+                selleremail: result.owner.email
+            })
+        })
+        let num = setInterval(async()=>{
+            if(detailedProductInfo.length===products.length){
+                clearInterval(num);
+                const result2 = await PurchasedProduct.insertMany(detailedProductInfo);
+                if(result2.length===products.length){
+                    res.json({
+                        response:{
+                            type:true
+                        }
+                    })
+                }else{
+                    res.json({
+                        response:{
+                            type:false
+                        }
+                    })
+                }
+            }
+        },100)
+    } catch (err) {
+        next(err);
+    }
+})
+
+app.get("/api/user/productspurchased",async (req,res,next)=>{
     try{
-        const {params:{index}} = req;
+        const result = await PurchasedProduct.find({customer_id:req.user._id});
+        res.json({
+            response:{
+                type:true,
+                pp: result
+            }
+        })
+    }catch(err){
+        next(err);
+    }
+})
+
+app.delete("/api/user/cart/:index", (req, res, next) => {
+    try {
+        const { params: { index } } = req;
         console.log(index)
-        const arr = req.session.cart.filter((value,i,arr)=>{
-            console.log(i===parseInt(index))
-            if(i===parseInt(index)){
+        const arr = req.session.cart.filter((value, i, arr) => {
+            console.log(i === parseInt(index))
+            if (i === parseInt(index)) {
                 return false;
-            }else{
+            } else {
                 return true;
             }
         })
         console.log(arr)
         req.session.cart = arr
         res.json({
-            response:{
-                type:true,
-                cart:arr
+            response: {
+                type: true,
+                cart: arr
             }
         })
-    }catch(err){
+    } catch (err) {
         next(err)
     }
 })
@@ -187,7 +257,7 @@ app.get("/api/user/cart", (req, res, next) => {
                 cart: req.session.cart
             }
         })
-    }catch(err){
+    } catch (err) {
         next(err)
     }
 })
