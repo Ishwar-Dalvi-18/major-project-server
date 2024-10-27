@@ -138,6 +138,22 @@ app.post("/api/user/cart", async (req, res, next) => {
 
 })
 
+app.delete("/api/product/:id",async (req,res,next)=>{
+    try{
+        const {params:{id}} = req;
+        const result = await Product.deleteOne({_id:id});
+        if(result.deletedCount===1){
+            res.json({
+                response:{
+                    type:true
+                }
+            })
+        }
+    }catch(err){
+        next(err)
+    }
+})
+
 app.delete("/api/user/cart/:index",(req,res,next)=>{
     try{
         const {params:{index}} = req;
