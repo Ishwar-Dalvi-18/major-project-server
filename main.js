@@ -26,11 +26,12 @@ import { productValidation } from "./validation/productValidation.js";
 import { extendedEmailValidation } from "./utils/emailValidation.js";
 import { userValidationUpdate } from "./validation/userValidationUpdate.js";
 import { PurchasedProduct } from "./models/purchasedproducts.models.js";
+import twilio from 'twilio'
 //password : cPfzFWUMX3nSsaeK
 const port = process.env.PORT || 8000;
 const app = express();
 
-const ip = "192.168.0.224"
+const ip = "localhost"
 
 app.use(cors({
     origin: ["http://192.168.0.224:5173", "http://192.168.149.251:5173", `http://${ip}:5173`],
@@ -155,72 +156,224 @@ app.delete("/api/product/:id", async (req, res, next) => {
     }
 })
 
-app.delete("/api/user/entirecart",(req,res,next)=>{
-    try{
+app.delete("/api/user/entirecart", (req, res, next) => {
+    try {
         req.session.cart = [];
         res.json({
-            response:{
-                type:true
+            response: {
+                type: true
             }
         })
-    }catch(err){
+    } catch (err) {
         next(err)
     }
 })
 
 app.post("/api/user/purchased", async (req, res, next) => {
     try {
-        const {body:{products}} = req
+        const { body: { products, address } } = req
         const detailedProductInfo = [];
-        products.forEach(async(value)=>{
-            const result = await Product.findOne({_id:value.id}).populate("owner");
+        products.forEach(async (value) => {
+            const result = await Product.findOne({ _id: value.id }).populate("owner");
             detailedProductInfo.push({
                 customer_id: req.user._id,
-                product_id:result._id,
-                image:result.image,
-                name:result.name,
-                quantity: (value.quantity+" "+result.price.unit),
-                amount: (value.quantity*result.price.amount)+" "+result.price.currency,
+                product_id: result._id,
+                image: result.image,
+                name: result.name,
+                quantity: (value.quantity + " " + result.price.unit),
+                amount: (value.quantity * result.price.amount) + " " + result.price.currency,
+                seller_id: result.owner._id,
                 sellername: result.owner.name,
                 sellercontact: result.owner.contact,
-                selleremail: result.owner.email
+                selleremail: result.owner.email,
+                addressofdelivery: address,
+                deletedbyfarmer: false,
+                viewpermission: {
+                    customer: true,
+                    farmer: true,
+                }
             })
+            const result2 = await Product.updateOne({ _id: value.id }, { $set: { quantity: { count: result.quantity.count - value.quantity, unit: result.quantity.unit } } })
         })
-        let num = setInterval(async()=>{
-            if(detailedProductInfo.length===products.length){
+        let num = setInterval(async () => {
+            if (detailedProductInfo.length === products.length) {
                 clearInterval(num);
                 const result2 = await PurchasedProduct.insertMany(detailedProductInfo);
-                if(result2.length===products.length){
+                if (result2.length === products.length) {
                     res.json({
-                        response:{
-                            type:true
+                        response: {
+                            type: true
                         }
                     })
-                }else{
+                } else {
                     res.json({
-                        response:{
-                            type:false
+                        response: {
+                            type: false
                         }
                     })
                 }
             }
-        },100)
+        }, 100)
     } catch (err) {
         next(err);
     }
 })
 
-app.get("/api/user/productspurchased",async (req,res,next)=>{
-    try{
-        const result = await PurchasedProduct.find({customer_id:req.user._id});
+app.get("/api/user/productspurchased", async (req, res, next) => {
+    try {
+        const result = await PurchasedProduct.find({ customer_id: req.user._id, 'viewpermission.customer': true });
         res.json({
-            response:{
-                type:true,
+            response: {
+                type: true,
                 pp: result
             }
         })
-    }catch(err){
+    } catch (err) {
         next(err);
+    }
+})
+
+
+app.get("/api/farmer/productorders", async (req, res, next) => {
+    try {
+        const result = await PurchasedProduct.find({ seller_id: req.user._id, 'viewpermission.farmer': true }, {
+            _id: 1,
+            image: 1,
+            name: 1,
+            quantity: 1,
+            amount: 1
+        });
+        res.json({
+            response: {
+                type: true,
+                pp: result
+            }
+        })
+    } catch (err) {
+        next(err);
+    }
+})
+
+
+app.get("/api/farmer/productselled", async (req, res, next) => {
+    try {
+        const result = await PurchasedProduct.find({ seller_id: req.user._id, 'viewpermission.farmer': false }, {
+            _id: 1,
+            image: 1,
+            name: 1,
+            quantity: 1,
+            amount: 1
+        });
+        res.json({
+            response: {
+                type: true,
+                pp: result
+            }
+        })
+    } catch (err) {
+        next(err);
+    }
+})
+
+app.get("/api/farmer/product/:id", async (req, res, next) => {
+    try {
+        const { params: { id } } = req
+        const result = await PurchasedProduct.findOne({
+            _id: id
+        }).populate("customer_id");
+        res.json({
+            response: {
+                type: true,
+                product: result
+            }
+        })
+    } catch (err) {
+        next(err)
+    }
+})
+
+app.get("/api/farmer/orderstatus/:_id", async (req, res, next) => {
+    try {
+        const { params: { _id } } = req
+        const result = await PurchasedProduct.findOne({ _id: _id }, { _id: 0, statusofproduct: 1 });
+        res.json({
+            response: {
+                type: true,
+                shortdescription: result.statusofproduct.shortdescription,
+                longdescription: result.statusofproduct.longdescription
+            }
+        })
+    } catch (err) {
+        next(err)
+    }
+})
+
+app.patch("/api/farmer/orderstatus/:id", async (req, res, next) => {
+    try {
+        const { params: { id } } = req
+        const { body: { shortdes, longdes } } = req
+        const result = await PurchasedProduct.updateOne({ _id: id }, { $set: { 'statusofproduct.shortdescription': shortdes, "statusofproduct.longdescription": longdes } })
+        res.json({
+            response: {
+                type: true
+            }
+        })
+    } catch (err) {
+        next(err)
+    }
+})
+
+app.post("/api/sms/deliverystatus", async (req, res, next) => {
+    try {
+        const { body: { to, message } } = req
+        const accountSid = 'AC47e9dec4925afa08406d1d01a8233bd7';
+        const authToken = '26b59d718beab59be98b9fadddf9a720';
+        const client = twilio(accountSid, authToken)
+        client.messages
+            .create({
+                from: '+15095607426',
+                to: `+91${to}`,
+                body: message
+            })
+            .then(message => {
+                console.log(message.sid)
+                res.json({
+                    response: {
+                        type: true
+                    }
+                })
+            })
+
+    } catch (err) {
+        next(err)
+    }
+})
+
+app.delete("/api/user/productpurchased/:id", async (req, res, next) => {
+    try {
+        const { params: { id } } = req
+        const result = await PurchasedProduct.updateOne({ _id: id }, { $set: { 'viewpermission.customer': false } })
+        res.json({
+            response: {
+                type: true
+            }
+        })
+    } catch (err) {
+        next(err)
+    }
+})
+
+app.delete("/api/farmer/productsaled/:id", async (req, res, next) => {
+    try {
+        const { params: { id } } = req
+        const result = await PurchasedProduct.updateOne({_id: id}, { $set: { 'viewpermission.farmer': false } })
+        res.json({
+            response: {
+                type: true
+            }
+        })
+    } catch (err) {
+        next(err)
     }
 })
 
