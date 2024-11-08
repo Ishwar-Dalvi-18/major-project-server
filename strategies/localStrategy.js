@@ -6,13 +6,11 @@ import { language } from "../globals.js";
 import { NewUser } from "../models/newuser.models.js";
 
 passport.deserializeUser((user,done)=>{
-    console.log("DeSerialize")
     done(null,user)
 })
 
 passport.serializeUser((user,done)=>{
-    console.log("Serialize")
-    console.log(user)
+    console.log(`User ${user.name} logged in.`)
     done(null,user)
 })
 

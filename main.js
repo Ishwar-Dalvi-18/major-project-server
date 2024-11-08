@@ -31,7 +31,7 @@ import twilio from 'twilio'
 const port = process.env.PORT || 8000;
 const app = express();
 
-const ip = "localhost"
+const ip = "192.168.0.224"
 
 app.use(cors({
     origin: ["http://192.168.0.224:5173", "http://192.168.149.251:5173", `http://${ip}:5173`],
@@ -61,7 +61,6 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-
 const httpServer = app.listen(port, ip, () => {
     console.log(`server is running on port : ${port}`);
 })
@@ -73,8 +72,23 @@ const io = new Server(httpServer, {
         credentials: true
     }
 });
+const connectedsockets = {}
+
 io.on("connection", socket => {
-    console.log(`One client connected : ${socket.id}`);
+    socket.on("sending-id", ({ id }) => {
+        connectedsockets[id] = {
+            socket: socket,
+            otp: 0
+        }
+        socket.emit("id-confirmed", {})
+        socket.on("disconnect", (data) => {
+            connectedsockets[id] = {
+                socket: null,
+                otp: 0
+            }
+        })
+    })
+
 })
 
 app.use("/profile", isUserAuthenticated, profileRouter)
@@ -83,6 +97,54 @@ app.get("/api/auth/google/callback", passport.authenticate('google', {
     successRedirect: "http://localhost:5173/profile",
     failureRedirect: "http://localhost:5173/login"
 }))
+
+function generateOTP() {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+app.get("/api/otp/:id", (req, res, next) => {
+    try {
+        const { params: { id } } = req
+        const targetedsocket = connectedsockets;
+        if (connectedsockets[id].otp === 0) {
+            throw new Error("OTP Expired")
+        } else {
+            res.json({
+                response: {
+                    type: true,
+                    otp: connectedsockets[id].otp
+                }
+            })
+        }
+    } catch (error) {
+        next(error)
+    }
+})
+
+app.post("/api/otp", async (req, res, next) => {
+    try {
+        const { body: { id } } = req
+        const otp = generateOTP();
+        if (connectedsockets[id].socket) {
+            connectedsockets[id].socket.emit("otp", {
+                OTP: otp
+            })
+            connectedsockets[id].otp = otp
+            setTimeout(() => {
+                connectedsockets[id].otp = 0;
+            }, 1000 * 30)
+        } else {
+            next(new Error("User is offline"))
+        }
+        res.json({
+            response: {
+                type: true
+            }
+        })
+    } catch (err) {
+        next(err)
+    }
+})
 
 app.get("/api/products/:seq", async (req, res) => {
     const { params: { seq } } = req;
@@ -241,7 +303,8 @@ app.get("/api/farmer/productorders", async (req, res, next) => {
             image: 1,
             name: 1,
             quantity: 1,
-            amount: 1
+            amount: 1,
+            statusofproduct: 1
         });
         res.json({
             response: {
@@ -257,12 +320,13 @@ app.get("/api/farmer/productorders", async (req, res, next) => {
 
 app.get("/api/farmer/productselled", async (req, res, next) => {
     try {
-        const result = await PurchasedProduct.find({ seller_id: req.user._id, 'viewpermission.farmer': false }, {
+        const result = await PurchasedProduct.find({ seller_id: req.user._id, 'viewpermission.farmer': false, deletedbyfarmer: false }, {
             _id: 1,
             image: 1,
             name: 1,
             quantity: 1,
-            amount: 1
+            amount: 1,
+            statusofproduct: 1
         });
         res.json({
             response: {
@@ -336,7 +400,6 @@ app.post("/api/sms/deliverystatus", async (req, res, next) => {
                 body: message
             })
             .then(message => {
-                console.log(message.sid)
                 res.json({
                     response: {
                         type: true
@@ -352,7 +415,12 @@ app.post("/api/sms/deliverystatus", async (req, res, next) => {
 app.delete("/api/user/productpurchased/:id", async (req, res, next) => {
     try {
         const { params: { id } } = req
-        const result = await PurchasedProduct.updateOne({ _id: id }, { $set: { 'viewpermission.customer': false } })
+        const productinfo = await PurchasedProduct.findOne({ _id: id });
+        if (productinfo.deletedbyfarmer === true) {
+            await PurchasedProduct.deleteOne({ _id: id });
+        } else {
+            await PurchasedProduct.updateOne({ _id: id }, { $set: { 'viewpermission.customer': false } })
+        }
         res.json({
             response: {
                 type: true
@@ -366,7 +434,26 @@ app.delete("/api/user/productpurchased/:id", async (req, res, next) => {
 app.delete("/api/farmer/productsaled/:id", async (req, res, next) => {
     try {
         const { params: { id } } = req
-        const result = await PurchasedProduct.updateOne({_id: id}, { $set: { 'viewpermission.farmer': false } })
+        await PurchasedProduct.updateOne({ _id: id }, { $set: { 'viewpermission.farmer': false } })
+        res.json({
+            response: {
+                type: true
+            }
+        })
+    } catch (err) {
+        next(err)
+    }
+})
+
+app.delete("/api/farmer/complete-delete/:id",async (req,res,next)=>{
+    try {
+        const { params: { id } } = req
+        const productinfo = await PurchasedProduct.findOne({ _id: id });
+        if (productinfo.viewpermission.customer === false) {
+            await PurchasedProduct.deleteOne({ _id: id });
+        } else {
+            await PurchasedProduct.updateOne({ _id: id }, { $set: { deletedbyfarmer: true } })
+        }
         res.json({
             response: {
                 type: true
@@ -380,16 +467,13 @@ app.delete("/api/farmer/productsaled/:id", async (req, res, next) => {
 app.delete("/api/user/cart/:index", (req, res, next) => {
     try {
         const { params: { index } } = req;
-        console.log(index)
         const arr = req.session.cart.filter((value, i, arr) => {
-            console.log(i === parseInt(index))
             if (i === parseInt(index)) {
                 return false;
             } else {
                 return true;
             }
         })
-        console.log(arr)
         req.session.cart = arr
         res.json({
             response: {
@@ -452,6 +536,9 @@ app.post("/api/user/login", async (req, res, next) => {
         })
     }
 })
+
+
+
 
 
 app.post("/api/product", checkSchema(productValidation), async (req, res, next) => {
@@ -590,9 +677,6 @@ app.get("/api/products", async (req, res, next) => {
 })
 
 app.get("/api/get/user", async (req, res, next) => {
-    console.log(req.cookies)
-    console.log(req.sessionID)
-    console.log(req.user)
     try {
         if (req.user) {
             const result = await NewUser.findOne({ _id: req.user._id })
@@ -618,7 +702,6 @@ app.patch("/api/user", checkSchema(userValidationUpdate), async (req, res, next)
     if (req.user) {
         const validation_result = validationResult(req);
         if (validation_result.errors.length > 0) {
-            console.log(validation_result.errors)
             return next(new Error("Validation error"));
         }
         const data = matchedData(req);
