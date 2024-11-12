@@ -27,6 +27,7 @@ import { extendedEmailValidation } from "./utils/emailValidation.js";
 import { userValidationUpdate } from "./validation/userValidationUpdate.js";
 import { PurchasedProduct } from "./models/purchasedproducts.models.js";
 import twilio from 'twilio'
+import { createRazorPayInstance } from "./utils/RazorPayUtils.js";
 //password : cPfzFWUMX3nSsaeK
 const port = process.env.PORT || 8000;
 const app = express();
@@ -34,7 +35,7 @@ const app = express();
 const ip = "192.168.0.224"
 
 app.use(cors({
-    origin: ["http://192.168.0.224:5173", "http://192.168.149.251:5173", `http://${ip}:5173`],
+    origin: ["http://192.168.0.224:5173", "http://192.168.249.251:5173", `http://${ip}:5173`],
     credentials: true
 }))
 mongoose.connect("mongodb+srv://ishwar:cPfzFWUMX3nSsaeK@cluster0.fxllgkn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0").then(db => {
@@ -101,6 +102,68 @@ app.get("/api/auth/google/callback", passport.authenticate('google', {
 function generateOTP() {
     return Math.floor(1000 + Math.random() * 9000).toString();
 }
+
+const createRazorpayOrder = async(req,res,next)=>{
+    try{
+        const {body:{cartItems}} = req
+        let total_payment_amount=0;
+        cartItems.forEach(async(value)=>{
+            const amount = (await Product.findOne({_id:value.id})).price.amount;
+            total_payment_amount = total_payment_amount+(amount*value.quantity);
+        })
+        const rp_instance = createRazorPayInstance();
+        const options = {
+            amount:total_payment_amount,
+            currency:"INR",
+            receipt:"receipt_order_1"
+        }
+        rp_instance.orders.create(options,(err,order)=>{
+            if(err){
+                throw err
+            }else{
+                res.json({
+                    response:{
+                        type:true,
+                        order:order
+                    }
+                })
+            }
+        });
+    }catch(err){
+        next(err)
+    }
+}
+
+const verifyPayment = async(req,res,next)=>{
+    try{
+        const {body:{order_id,payment_id,signature}} = req;
+        const rp_secret_key = process.env.RAZORPAY_KEY_SECRET;
+        const hmac = crypto.createHmac("sha256",rp_secret_key);
+        hmac.update(order_id+"|"+payment_id)
+        const generatedsignature = hmac.digest("hex");
+        if(generatedsignature===signature){
+            res.status(200).json({
+                response:{
+                    type:true,
+                    message:"Payment Verification Successfull"
+                }
+            })
+        }else{
+            res.status(400).json({
+                response:{
+                    type:false,
+                    message:"Payment Verification Failed"
+                }
+            })
+        }
+    }catch(err){
+        next(err)
+    }
+}
+
+app.post("/api/payment/createorder",createRazorpayOrder)
+
+app.post("/api/payment/verifypaymnet",verifyPayment)
 
 app.get("/api/otp/:id", (req, res, next) => {
     try {
@@ -802,6 +865,22 @@ app.post("/api/user", checkSchema(userValidationSchema), (req, res, next) => {
         }
 
     }
+})
+
+
+app.get("/api/logout",(req,res,next)=>{
+    req.logout((err)=>{
+        if(err){
+            next(err)
+        }else{
+            res.json({
+                response:{
+                    type:true,
+                    message: "Logout Successfully"
+                }
+            })
+        }
+    })
 })
 
 app.use((err, req, res, next) => {
